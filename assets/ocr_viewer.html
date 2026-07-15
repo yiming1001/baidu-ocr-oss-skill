@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OCR Markdown Review</title>
+  <style>
+    :root { color-scheme: light; --ink: #17232d; --muted: #64727d; --line: #d6dde1; --paper: #ffffff; --ground: #f2f5f4; --teal: #007c79; --amber: #b85d00; --amber-soft: #fff0d9; }
+    * { box-sizing: border-box; } body { margin: 0; min-width: 320px; background: var(--ground); color: var(--ink); font: 14px/1.5 Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    button, select { font: inherit; color: inherit; } button { cursor: pointer; }
+    .topbar { min-height: 56px; padding: 10px 18px; background: var(--paper); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 10; }
+    .title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; font-size: 16px; }
+    .toolbar { display: flex; align-items: center; gap: 6px; } .control { min-height: 32px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); padding: 4px 9px; }
+    .icon-button { width: 32px; padding: 0; display: inline-grid; place-items: center; } .status { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .content { height: calc(100vh - 56px); display: grid; grid-template-columns: minmax(420px, 1.15fr) minmax(340px, .85fr); }
+    .document-pane { overflow: auto; padding: 24px; border-right: 1px solid var(--line); display: flex; justify-content: center; align-items: flex-start; }
+    .page-stage { position: relative; width: min(100%, 980px); background: #e6ecea; box-shadow: 0 3px 14px rgba(23,35,45,.12); }
+    canvas, .source-image { display: block; width: 100%; height: auto; } .overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+    .hit-area { fill: rgba(0,124,121,.025); stroke: rgba(0,124,121,.34); stroke-width: 1.2; vector-effect: non-scaling-stroke; transition: fill .12s, stroke .12s; cursor: pointer; }
+    .hit-area:hover, .hit-area.active { fill: rgba(184,93,0,.3); stroke: var(--amber); stroke-width: 2; }
+    .markdown-pane { min-width: 0; overflow: auto; background: var(--paper); }
+    .markdown { padding: 28px 30px 44px; max-width: 800px; margin: 0 auto; } .markdown :first-child { margin-top: 0; }
+    .markdown h1, .markdown h2, .markdown h3 { line-height: 1.25; } .markdown h1 { font-size: 24px; } .markdown h2 { font-size: 20px; } .markdown h3 { font-size: 17px; }
+    .markdown img { display: block; max-width: 100%; height: auto; margin: 12px 0; } .markdown table { width: 100%; border-collapse: collapse; margin: 12px 0; overflow: auto; display: block; }
+    .markdown th, .markdown td { border: 1px solid var(--line); padding: 6px 8px; vertical-align: top; } .markdown code { background: #edf1f0; padding: 1px 3px; }
+    .ocr-link, .ocr-block { border-radius: 2px; cursor: pointer; transition: background .12s, box-shadow .12s; } .ocr-link:hover, .ocr-block:hover, .ocr-link.active, .ocr-block.active { background: var(--amber-soft); box-shadow: inset 0 -2px 0 #eab866; }
+    .empty, .loading { padding: 28px; color: var(--muted); text-align: center; }
+    @media (max-width: 860px) { .content { height: auto; min-height: calc(100vh - 56px); grid-template-columns: 1fr; } .document-pane { min-height: 55vh; border-right: 0; border-bottom: 1px solid var(--line); padding: 16px; } .markdown-pane { min-height: 45vh; } .topbar { flex-wrap: wrap; } .title { flex-basis: 100%; order: -1; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="title" id="document-title">OCR Markdown Review</div>
+    <div class="toolbar"><button class="control icon-button" id="previous-page" type="button" aria-label="Previous page" title="Previous page">&#8249;</button><select class="control" id="page-select" aria-label="Page"></select><button class="control icon-button" id="next-page" type="button" aria-label="Next page" title="Next page">&#8250;</button></div>
+    <div class="status" id="status">Loading</div>
+  </header>
+  <main class="content">
+    <section class="document-pane" aria-label="Original document"><div class="page-stage" id="page-stage"><div class="loading">Loading document</div></div></section>
+    <aside class="markdown-pane"><article class="markdown" id="markdown-content"></article></aside>
+  </main>
+  <script type="module">
+    import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
+    import { marked } from "https://cdn.jsdelivr.net/npm/marked@15.0.7/lib/marked.esm.js";
+    import DOMPurify from "https://cdn.jsdelivr.net/npm/dompurify@3.2.3/+esm";
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+    const viewerData = __VIEWER_DATA__;
+    const sourceUrl = __SOURCE_PDF_URL__;
+    const markdownText = __MARKDOWN_CONTENT__;
+    const stage = document.getElementById("page-stage");
+    const markdown = document.getElementById("markdown-content");
+    const pageSelect = document.getElementById("page-select");
+    const status = document.getElementById("status");
+    const pageState = { index: 0, pdf: null, activeId: null, pinnedId: null };
+    const entryIndex = new Map();
+    viewerData.pages.forEach((page, pageIndex) => page.entries.forEach((entry) => entryIndex.set(entry.id, { ...entry, pageIndex })));
+
+    document.getElementById("document-title").textContent = viewerData.file_name || "OCR Markdown Review";
+    viewerData.pages.forEach((page, index) => { const option = document.createElement("option"); option.value = String(index); option.textContent = `Page ${page.page_number}`; pageSelect.append(option); });
+    const currentPage = () => viewerData.pages[pageState.index];
+    const pointsAttribute = (points) => points.map((point) => point.join(",")).join(" ");
+    const normalize = (value) => String(value || "").replace(/\s+/g, "").toLowerCase();
+
+    function paintActive(revealMarkdown = false) {
+      const ids = [pageState.activeId, pageState.pinnedId].filter(Boolean);
+      document.querySelectorAll(".hit-area, .ocr-link, .ocr-block").forEach((element) => element.classList.toggle("active", ids.includes(element.dataset.entryId)));
+      if (revealMarkdown && pageState.activeId) document.querySelector(`[data-entry-id="${CSS.escape(pageState.activeId)}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+    function activate(entryId, pinned = false, revealMarkdown = false) {
+      const entry = entryIndex.get(entryId); if (!entry) return;
+      if (pinned) pageState.pinnedId = pageState.pinnedId === entryId ? null : entryId;
+      pageState.activeId = entryId;
+      if (entry.pageIndex !== pageState.index) { pageState.index = entry.pageIndex; pageSelect.value = String(pageState.index); renderPage().then(() => paintActive(revealMarkdown)); }
+      else paintActive(revealMarkdown);
+    }
+    function clearActive() { if (!pageState.pinnedId) { pageState.activeId = null; paintActive(); } }
+
+    function renderOverlay() {
+      const page = currentPage();
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("class", "overlay"); svg.setAttribute("viewBox", `0 0 ${page.width} ${page.height}`); svg.setAttribute("preserveAspectRatio", "none");
+      page.entries.forEach((entry) => {
+        if (!entry.polygon || entry.polygon.length < 3) return;
+        const shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon"); shape.setAttribute("class", "hit-area"); shape.setAttribute("points", pointsAttribute(entry.polygon)); shape.dataset.entryId = entry.id;
+        shape.addEventListener("mouseenter", () => activate(entry.id, false, true)); shape.addEventListener("mouseleave", clearActive); shape.addEventListener("click", () => activate(entry.id, true, true)); svg.append(shape);
+      });
+      stage.append(svg);
+    }
+    async function renderPdfPage() {
+      stage.replaceChildren(); const pdfPage = await pageState.pdf.getPage(pageState.index + 1); const paneWidth = Math.min(stage.parentElement.clientWidth - 48, 980); const baseViewport = pdfPage.getViewport({ scale: 1 }); const scale = Math.max(1, paneWidth / baseViewport.width) * window.devicePixelRatio; const viewport = pdfPage.getViewport({ scale });
+      const canvas = document.createElement("canvas"); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height); canvas.style.width = `${Math.ceil(viewport.width / window.devicePixelRatio)}px`; const context = canvas.getContext("2d", { alpha: false }); await pdfPage.render({ canvasContext: context, viewport }).promise; stage.append(canvas); renderOverlay(); status.textContent = `Page ${currentPage().page_number} / ${viewerData.pages.length}`;
+    }
+    async function renderImagePage() { stage.replaceChildren(); const image = document.createElement("img"); image.className = "source-image"; image.alt = "Original document"; image.src = sourceUrl; await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; }); stage.append(image); renderOverlay(); status.textContent = "Image"; }
+    async function renderPage() { try { if (pageState.pdf) await renderPdfPage(); else await renderImagePage(); paintActive(); } catch (error) { stage.innerHTML = '<div class="empty">Unable to render the original document.</div>'; status.textContent = "Render failed"; console.error(error); } }
+
+    function bindEntry(element, entry) {
+      element.classList.add(element.tagName === "SPAN" ? "ocr-link" : "ocr-block"); element.dataset.entryId = entry.id;
+      element.addEventListener("mouseenter", () => activate(entry.id)); element.addEventListener("mouseleave", clearActive); element.addEventListener("click", () => activate(entry.id, true));
+    }
+    function bindMarkdownText() {
+      markdown.innerHTML = DOMPurify.sanitize(marked.parse(markdownText), { ADD_ATTR: ["style"] });
+      const entries = [...entryIndex.values()].filter((entry) => entry.text && entry.text.length >= 3).sort((a, b) => b.text.length - a.text.length);
+      const walker = document.createTreeWalker(markdown, NodeFilter.SHOW_TEXT);
+      const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach((node) => {
+        const raw = node.nodeValue; const matches = entries.map((entry) => ({ entry, start: raw.indexOf(entry.text) })).filter((match) => match.start >= 0).sort((a, b) => a.start - b.start || b.entry.text.length - a.entry.text.length);
+        if (!matches.length) return;
+        const fragment = document.createDocumentFragment(); let cursor = 0;
+        matches.forEach((match) => { if (match.start < cursor) return; fragment.append(raw.slice(cursor, match.start)); const span = document.createElement("span"); span.textContent = raw.slice(match.start, match.start + match.entry.text.length); bindEntry(span, match.entry); fragment.append(span); cursor = match.start + match.entry.text.length; });
+        fragment.append(raw.slice(cursor)); node.replaceWith(fragment);
+      });
+      markdown.querySelectorAll("h1,h2,h3,h4,h5,h6,p,li,td,th").forEach((block) => {
+        if (block.querySelector(".ocr-link")) return;
+        const blockText = normalize(block.textContent); if (blockText.length < 3) return;
+        const matches = entries.filter((entry) => { const entryText = normalize(entry.text); return entryText.length >= 3 && (blockText.includes(entryText) || entryText === blockText); });
+        if (matches.length === 1) bindEntry(block, matches[0]);
+      });
+    }
+
+    document.getElementById("previous-page").addEventListener("click", () => { if (pageState.index > 0) { pageState.index -= 1; pageSelect.value = String(pageState.index); renderPage(); } });
+    document.getElementById("next-page").addEventListener("click", () => { if (pageState.index + 1 < viewerData.pages.length) { pageState.index += 1; pageSelect.value = String(pageState.index); renderPage(); } });
+    pageSelect.addEventListener("change", () => { pageState.index = Number(pageSelect.value); renderPage(); });
+    window.addEventListener("keydown", (event) => { if (event.key === "Escape") { pageState.pinnedId = null; pageState.activeId = null; paintActive(); } });
+
+    try { bindMarkdownText(); if (/\.pdf(?:$|[?#])/i.test(sourceUrl)) pageState.pdf = await pdfjsLib.getDocument(sourceUrl).promise; await renderPage(); }
+    catch (error) { stage.innerHTML = '<div class="empty">Unable to load the original document.</div>'; status.textContent = "Load failed"; console.error(error); }
+  </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "baidu_api_key": "your Baidu API Key",
+  "baidu_secret_key": "your Baidu Secret Key",
+  "oss_access_key_id": "your Aliyun AccessKeyId",
+  "oss_access_key_secret": "your Aliyun AccessKeySecret",
+  "oss_endpoint": "https://oss-cn-beijing.aliyuncs.com",
+  "oss_bucket": "your-bucket",
+  "model": "paddle_vl",
+  "input_file_url": "",
+  "input_prefix": "ocr-test/",
+  "output_prefix": "ocr_result/api/",
+  "output_url_mode": "public",
+  "signed_url_expires": 604800,
+  "poll_interval": 5,
+  "max_wait": 1800
+}

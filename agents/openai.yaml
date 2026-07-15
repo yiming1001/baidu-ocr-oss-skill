@@ -1,0 +1,4 @@
+interface:
+  display_name: "Baidu OCR OSS Markdown Viewer"
+  short_description: "Parse local files and publish linked OCR Markdown"
+  default_prompt: "Use $baidu-ocr-oss-markdown-viewer to parse my local PDF and return its public Markdown viewer URL."
