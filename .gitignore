@@ -1,0 +1,7 @@
+
+# 网页界面运行时产生的临时上传文件
+.uploads/
+__pycache__/
+.venv/
+.fresh_url.txt
+.a3_sample.md

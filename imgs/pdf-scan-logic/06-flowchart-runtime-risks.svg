@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">任务生命周期与工程风险</title>
+  <desc id="desc">展示 Web 任务从创建、后台执行、状态轮询到完成或失败和临时文件清理的生命周期，并标出输出覆盖、内存任务和依赖测试等风险。</desc>
+  <defs>
+    <linearGradient id="aluminum" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EEF1F4"/><stop offset="0.5" stop-color="#C7CDD3"/><stop offset="1" stop-color="#9EA6AE"/></linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#374151" flood-opacity="0.20"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="4" orient="auto"><path d="M1 1 L9 4 L1 7" fill="none" stroke="#222222" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  </defs>
+  <style>
+    text { font-family: "Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #222222; }
+    .title { font-size: 38px; font-weight: 700; }
+    .label { font-size: 20px; font-weight: 700; text-anchor: middle; }
+    .small { font-size: 16px; font-weight: 500; text-anchor: middle; fill: #4B5563; }
+    .risk { font-size: 18px; font-weight: 700; }
+    .risk-small { font-size: 15px; font-weight: 500; fill: #374151; }
+    .ink { fill: none; stroke: #222222; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+  <rect width="1200" height="675" fill="#F3F4F6"/>
+  <rect x="38" y="24" width="1124" height="626" rx="34" fill="url(#aluminum)" filter="url(#shadow)"/>
+  <rect x="57" y="43" width="1086" height="588" rx="24" fill="#FFFFFF" stroke="#8F98A1" stroke-width="4"/>
+  <circle cx="75" cy="61" r="6" fill="#7B848D"/><circle cx="1125" cy="61" r="6" fill="#7B848D"/><circle cx="75" cy="613" r="6" fill="#7B848D"/><circle cx="1125" cy="613" r="6" fill="#7B848D"/>
+  <rect x="424" y="627" width="352" height="14" rx="7" fill="#A6ADB5"/>
+  <text x="600" y="98" class="title" text-anchor="middle">任务如何结束，风险藏在哪里</text>
+  <path d="M360 114 C470 107 733 121 842 112" class="ink" stroke-width="4"/>
+
+  <path d="M244 210 C266 204 284 204 306 210" class="ink" marker-end="url(#arrow)"/>
+  <path d="M474 210 C496 204 514 204 536 210" class="ink" marker-end="url(#arrow)"/>
+  <path d="M704 210 C726 204 744 204 766 210" class="ink" marker-end="url(#arrow)"/>
+  <path d="M934 210 C956 204 974 204 996 210" class="ink" marker-end="url(#arrow)"/>
+  <g transform="rotate(-1 170 210)">
+    <rect x="96" y="158" width="148" height="104" rx="16" fill="#D9ECFF" stroke="#222222" stroke-width="2.8"/>
+    <text x="170" y="199" class="label">创建 job_id</text><text x="170" y="229" class="small">状态 running</text>
+  </g>
+  <g transform="rotate(1 390 210)">
+    <rect x="306" y="158" width="168" height="104" rx="16" fill="#FFFFFF" stroke="#222222" stroke-width="2.8"/>
+    <text x="390" y="199" class="label">后台守护线程</text><text x="390" y="229" class="small">执行完整 OCR</text>
+  </g>
+  <g transform="rotate(-1 620 210)">
+    <rect x="536" y="158" width="168" height="104" rx="16" fill="#FFF2A8" stroke="#222222" stroke-width="2.8"/>
+    <text x="620" y="199" class="label">前端轮询状态</text><text x="620" y="229" class="small">每 1.2 秒一次</text>
+  </g>
+  <g transform="rotate(1 850 210)">
+    <rect x="766" y="158" width="168" height="104" rx="16" fill="#FFFFFF" stroke="#222222" stroke-width="2.8"/>
+    <text x="850" y="196" class="label">done / error</text><text x="850" y="226" class="small">结果 URL 或堆栈</text>
+  </g>
+  <g transform="rotate(-1 1060 210)">
+    <rect x="996" y="158" width="128" height="104" rx="16" fill="#D9ECFF" stroke="#222222" stroke-width="2.8"/>
+    <path d="M1032 187 H1088 M1042 187 V238 H1078 V187 M1048 176 H1072" class="ink" stroke-width="2.4"/>
+    <text x="1060" y="253" class="small">删临时文件</text>
+  </g>
+
+  <g transform="rotate(-1 315 365)">
+    <rect x="100" y="310" width="430" height="110" rx="18" fill="#FFF2A8" stroke="#222222" stroke-width="3"/>
+    <circle cx="138" cy="345" r="22" fill="#FFFFFF" stroke="#222222" stroke-width="2.5"/>
+    <text x="138" y="352" class="risk" text-anchor="middle">P0</text>
+    <text x="175" y="347" class="risk">OSS 输出对象会互相覆盖</text>
+    <text x="175" y="378" class="risk-small">固定图片键 + 同名结果键 → 历史内容被覆盖</text>
+    <text x="175" y="402" class="risk-small">建议：按 task_id 或 UUID 创建独立输出目录</text>
+  </g>
+  <g transform="rotate(1 832 365)">
+    <rect x="560" y="310" width="540" height="110" rx="18" fill="#D9ECFF" stroke="#222222" stroke-width="3"/>
+    <circle cx="598" cy="345" r="22" fill="#FFFFFF" stroke="#222222" stroke-width="2.5"/>
+    <text x="598" y="352" class="risk" text-anchor="middle">P1</text>
+    <text x="635" y="347" class="risk">任务只在内存；Office Viewer 路径不完整</text>
+    <text x="635" y="378" class="risk-small">服务重启任务丢失，完成任务不会自动淘汰</text>
+    <text x="635" y="402" class="risk-small">DOC/PPT 会被 Viewer 当作图片加载并失败</text>
+  </g>
+  <g transform="rotate(0.5 600 500)">
+    <rect x="100" y="448" width="1000" height="104" rx="18" fill="#FFFFFF" stroke="#222222" stroke-width="3"/>
+    <circle cx="140" cy="484" r="22" fill="#FFF2A8" stroke="#222222" stroke-width="2.5"/>
+    <text x="140" y="491" class="risk" text-anchor="middle">P2</text>
+    <text x="180" y="482" class="risk">百度查询阶段缺少统一重试</text>
+    <text x="180" y="513" class="risk-small">一次网络抖动可能中断长任务</text>
+    <path d="M500 466 V534" class="ink" stroke-width="2"/>
+    <text x="535" y="482" class="risk">依赖与测试不同步</text>
+    <text x="535" y="513" class="risk-small">requirements 缺 Flask；上传测试仍模拟旧接口</text>
+  </g>
+  <path d="M194 564 C370 576 828 558 1004 570" class="ink" stroke-width="2.6"/>
+</svg>

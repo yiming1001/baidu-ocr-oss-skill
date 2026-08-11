@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>百度 OCR 可视化界面</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --card: #ffffff;
+      --text: #1a1d21;
+      --muted: #6b7280;
+      --border: #e3e6ea;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-soft: #eff4ff;
+      --ok: #16a34a;
+      --err: #dc2626;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.05);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1115; --card: #181b21; --text: #e8eaed; --muted: #9aa2ad;
+        --border: #2a2f38; --accent: #3b82f6; --accent-hover: #60a5fa;
+        --accent-soft: #16233d; --ok: #22c55e; --err: #f87171;
+        --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: -apple-system, "Segoe UI", "Microsoft YaHei", Roboto, sans-serif;
+      line-height: 1.6;
+    }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 32px 20px 64px; }
+    header h1 { font-size: 24px; margin: 0 0 4px; }
+    header p { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 24px; box-shadow: var(--shadow); margin-bottom: 20px;
+    }
+    .banner {
+      font-size: 13px; padding: 10px 14px; border-radius: 10px; margin-bottom: 20px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .banner.ok { background: var(--accent-soft); color: var(--accent); }
+    .banner.warn { background: #fef3c7; color: #92400e; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+    .tab {
+      flex: 1; text-align: center; padding: 10px; border-radius: 10px; cursor: pointer;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      font-size: 14px; font-weight: 500; transition: all .15s;
+    }
+    .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .field { margin-bottom: 16px; }
+    label.lbl { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    input[type=text], input[type=url], select {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--bg); color: var(--text); font-size: 14px; font-family: inherit;
+    }
+    input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+    .drop {
+      border: 2px dashed var(--border); border-radius: 12px; padding: 36px 20px;
+      text-align: center; color: var(--muted); cursor: pointer; transition: all .15s;
+    }
+    .drop.hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+    .drop.has-file { border-style: solid; border-color: var(--accent); color: var(--text); }
+    .drop .big { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .row .field { flex: 1; min-width: 200px; }
+    .checkbox { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+    .checkbox input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .btn {
+      width: 100%; padding: 13px; border: none; border-radius: 11px; cursor: pointer;
+      background: var(--accent); color: #fff; font-size: 15px; font-weight: 600; transition: background .15s;
+    }
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .hidden { display: none !important; }
+    .log {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      padding: 14px 16px; font-size: 13px; max-height: 240px; overflow-y: auto;
+      font-family: "SF Mono", Consolas, monospace;
+    }
+    .log .line { padding: 2px 0; color: var(--muted); }
+    .log .line:last-child { color: var(--text); font-weight: 600; }
+    .spinner {
+      display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: -2px; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .result-links { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+    .link-card {
+      display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+      border: 1px solid var(--border); border-radius: 10px; text-decoration: none; color: var(--text);
+      background: var(--bg); transition: border-color .15s;
+    }
+    .link-card:hover { border-color: var(--accent); }
+    .link-card .ic { font-size: 20px; }
+    .link-card .t { font-weight: 600; font-size: 14px; }
+    .link-card .u { font-size: 12px; color: var(--muted); word-break: break-all; }
+    .link-card .go { margin-left: auto; color: var(--accent); font-size: 13px; white-space: nowrap; }
+    iframe.preview {
+      width: 100%; height: 560px; border: 1px solid var(--border); border-radius: 12px; background: #fff;
+    }
+    .err-box {
+      background: #fef2f2; color: var(--err); border: 1px solid #fecaca; border-radius: 10px;
+      padding: 14px 16px; font-size: 13px; white-space: pre-wrap; font-family: monospace;
+      max-height: 220px; overflow: auto;
+    }
+    @media (prefers-color-scheme: dark) { .err-box { background: #2a1416; border-color: #5b2626; } }
+    .stat { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>📄 百度 OCR 可视化界面</h1>
+      <p>上传本地文件或粘贴 URL，自动上传到 OSS、调用百度 OCR，并生成可视化查看页面。</p>
+    </header>
+
+    <div id="banner" class="banner ok">正在读取配置…</div>
+
+    <!-- 输入区 -->
+    <div class="card" id="input-card">
+      <div class="tabs">
+        <button class="tab active" data-mode="file" onclick="switchMode('file')">📁 本地文件</button>
+        <button class="tab" data-mode="url" onclick="switchMode('url')">🔗 已有 URL</button>
+      </div>
+
+      <!-- 文件模式 -->
+      <div id="pane-file">
+        <div class="drop" id="drop">
+          <div class="big" id="drop-title">点击选择文件，或拖拽到这里</div>
+          <div class="hint">支持 PDF、图片(jpg/png/webp…)、Word、PPT、txt，最大 100 MB</div>
+        </div>
+        <input type="file" id="file-input" class="hidden"
+               accept=".pdf,.ofd,.doc,.docx,.txt,.wps,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff">
+      </div>
+
+      <!-- URL 模式 -->
+      <div id="pane-url" class="hidden">
+        <div class="field">
+          <label class="lbl">文件 URL（百度服务器需能访问）</label>
+          <input type="url" id="url-input" placeholder="https://your-bucket.oss-cn-beijing.aliyuncs.com/xxx.pdf?...">
+          <div class="hint">公开 OSS 链接，或带签名、且有效期覆盖识别时间的私有链接。</div>
+        </div>
+        <div class="field">
+          <label class="lbl">文件名（可选）</label>
+          <input type="text" id="filename-input" placeholder="留空则自动从 URL 推断">
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
+
+      <div class="row">
+        <div class="field">
+          <label class="lbl">识别模型</label>
+          <select id="model-select">
+            <option value="paddle_vl">PaddleOCR-VL（复杂版面 / 表格 / 图表，含可视化）</option>
+            <option value="unlimited_ocr">Unlimited-OCR（通用文档文本，稳定）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="lbl">输出方式</label>
+          <select id="output-select">
+            <option value="public">public（公开永久链接）</option>
+            <option value="signed">signed（私有签名链接）</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="checkbox">
+          <input type="checkbox" id="viewer-check" checked>
+          <span>生成可视化查看器（仅 PaddleOCR-VL 支持，需 public 模式）</span>
+        </label>
+      </div>
+
+      <button class="btn" id="run-btn" onclick="runOcr()">🚀 开始识别</button>
+    </div>
+
+    <!-- 进度区 -->
+    <div class="card hidden" id="progress-card">
+      <label class="lbl"><span class="spinner" id="prog-spinner"></span>处理进度</label>
+      <div class="log" id="log"></div>
+    </div>
+
+    <!-- 结果区 -->
+    <div class="card hidden" id="result-card">
+      <label class="lbl">✅ 识别完成</label>
+      <div class="stat" id="result-stat"></div>
+      <div class="result-links" id="result-links"></div>
+      <div id="preview-wrap"></div>
+    </div>
+
+    <!-- 错误区 -->
+    <div class="card hidden" id="error-card">
+      <label class="lbl" style="color:var(--err)">❌ 出错了</label>
+      <div class="err-box" id="error-box"></div>
+    </div>
+  </div>
+
+  <script>
+    let mode = "file";
+    let selectedFile = null;
+    let pollTimer = null;
+
+    // 读取配置预填
+    fetch("/api/config").then(r => r.json()).then(cfg => {
+      const banner = document.getElementById("banner");
+      if (cfg.configured) {
+        banner.className = "banner ok";
+        banner.textContent = "✓ 配置已就绪，输出 Bucket：" + cfg.oss_bucket;
+      } else {
+        banner.className = "banner warn";
+        banner.textContent = "⚠ 未检测到有效配置，请先填写 config/local.json";
+      }
+      if (cfg.model) document.getElementById("model-select").value = cfg.model;
+      if (cfg.output_url_mode) document.getElementById("output-select").value = cfg.output_url_mode;
+    });
+
+    function switchMode(m) {
+      mode = m;
+      document.querySelectorAll(".tab").forEach(t =>
+        t.classList.toggle("active", t.dataset.mode === m));
+      document.getElementById("pane-file").classList.toggle("hidden", m !== "file");
+      document.getElementById("pane-url").classList.toggle("hidden", m !== "url");
+    }
+
+    // 文件选择 & 拖拽
+    const drop = document.getElementById("drop");
+    const fileInput = document.getElementById("file-input");
+    drop.onclick = () => fileInput.click();
+    fileInput.onchange = () => { if (fileInput.files[0]) setFile(fileInput.files[0]); };
+    drop.ondragover = e => { e.preventDefault(); drop.classList.add("hover"); };
+    drop.ondragleave = () => drop.classList.remove("hover");
+    drop.ondrop = e => {
+      e.preventDefault(); drop.classList.remove("hover");
+      if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+    };
+    function setFile(f) {
+      selectedFile = f;
+      drop.classList.add("has-file");
+      document.getElementById("drop-title").textContent =
+        "已选择：" + f.name + "（" + (f.size / 1024 / 1024).toFixed(2) + " MB）";
+    }
+
+    async function runOcr() {
+      const btn = document.getElementById("run-btn");
+      const fd = new FormData();
+      fd.append("mode", mode);
+      fd.append("model", document.getElementById("model-select").value);
+      fd.append("output_url_mode", document.getElementById("output-select").value);
+      fd.append("generate_viewer", document.getElementById("viewer-check").checked);
+
+      if (mode === "file") {
+        if (!selectedFile) { alert("请先选择一个文件"); return; }
+        fd.append("file", selectedFile);
+      } else {
+        const url = document.getElementById("url-input").value.trim();
+        if (!url) { alert("请填写文件 URL"); return; }
+        fd.append("file_url", url);
+        fd.append("file_name", document.getElementById("filename-input").value.trim());
+      }
+
+      // 重置界面
+      btn.disabled = true;
+      document.getElementById("result-card").classList.add("hidden");
+      document.getElementById("error-card").classList.add("hidden");
+      document.getElementById("progress-card").classList.remove("hidden");
+      document.getElementById("prog-spinner").classList.remove("hidden");
+      const log = document.getElementById("log");
+      log.innerHTML = '<div class="line">正在提交任务…</div>';
+
+      try {
+        const res = await fetch("/api/run", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "提交失败");
+        pollStatus(data.job_id);
+      } catch (e) {
+        showError(String(e));
+        btn.disabled = false;
+      }
+    }
+
+    function pollStatus(jobId) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        try {
+          const res = await fetch("/api/status/" + jobId);
+          const job = await res.json();
+          renderLog(job.messages);
+          if (job.status === "done") {
+            clearInterval(pollTimer);
+            document.getElementById("prog-spinner").classList.add("hidden");
+            document.getElementById("run-btn").disabled = false;
+            showResult(job.result);
+          } else if (job.status === "error") {
+            clearInterval(pollTimer);
+            document.getElementById("prog-spinner").classList.add("hidden");
+            document.getElementById("run-btn").disabled = false;
+            showError(job.error || "未知错误");
+          }
+        } catch (e) {
+          clearInterval(pollTimer);
+          document.getElementById("run-btn").disabled = false;
+          showError("查询进度失败：" + e);
+        }
+      }, 1200);
+    }
+
+    function renderLog(messages) {
+      const log = document.getElementById("log");
+      if (!messages || !messages.length) return;
+      log.innerHTML = messages.map(m => '<div class="line">' + escapeHtml(m) + "</div>").join("");
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function showResult(r) {
+      const card = document.getElementById("result-card");
+      card.classList.remove("hidden");
+      document.getElementById("result-stat").textContent =
+        "模型：" + (r.model_display_name || r.model) +
+        " ｜ 任务 ID：" + (r.task_id || "-") +
+        " ｜ 转存图片：" + (r.transferred_image_count ?? 0) + " 张";
+
+      const links = document.getElementById("result-links");
+      links.innerHTML = "";
+      if (r.viewer_url) links.appendChild(linkCard("🖼️", "可视化查看器（原文↔文字对照）", r.viewer_url));
+      if (r.markdown_url) links.appendChild(linkCard("📝", "Markdown 结果文件", r.markdown_url));
+      if (r.source_url) links.appendChild(linkCard("📎", "已上传的原始文件", r.source_url));
+      if (r.viewer_unavailable_reason)
+        links.appendChild(infoCard("ℹ️", r.viewer_unavailable_reason));
+
+      const pv = document.getElementById("preview-wrap");
+      pv.innerHTML = "";
+      if (r.viewer_url) {
+        const f = document.createElement("iframe");
+        f.className = "preview"; f.src = r.viewer_url;
+        pv.appendChild(f);
+      }
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function linkCard(ic, title, url) {
+      const a = document.createElement("a");
+      a.className = "link-card"; a.href = url; a.target = "_blank"; a.rel = "noopener";
+      a.innerHTML = '<span class="ic">' + ic + '</span>' +
+        '<span><span class="t">' + title + '</span><br><span class="u">' + escapeHtml(url) + '</span></span>' +
+        '<span class="go">打开 ↗</span>';
+      return a;
+    }
+    function infoCard(ic, text) {
+      const d = document.createElement("div");
+      d.className = "link-card";
+      d.innerHTML = '<span class="ic">' + ic + '</span><span class="u">' + escapeHtml(text) + '</span>';
+      return d;
+    }
+
+    function showError(msg) {
+      document.getElementById("prog-spinner").classList.add("hidden");
+      const card = document.getElementById("error-card");
+      card.classList.remove("hidden");
+      document.getElementById("error-box").textContent = msg;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+  </script>
+</body>
+</html>

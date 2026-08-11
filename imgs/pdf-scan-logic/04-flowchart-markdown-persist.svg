@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">OCR Markdown 持久化流程</title>
+  <desc id="desc">下载百度临时 Markdown，提取并转存图片，替换链接后上传最终 Markdown，并根据 public 或 signed 模式生成访问地址。</desc>
+  <defs>
+    <linearGradient id="aluminum" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EEF1F4"/><stop offset="0.5" stop-color="#C7CDD3"/><stop offset="1" stop-color="#9EA6AE"/></linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#374151" flood-opacity="0.20"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="4" orient="auto"><path d="M1 1 L9 4 L1 7" fill="none" stroke="#222222" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  </defs>
+  <style>
+    text { font-family: "Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #222222; }
+    .title { font-size: 38px; font-weight: 700; }
+    .label { font-size: 21px; font-weight: 700; text-anchor: middle; }
+    .card-label { font-size: 17px; font-weight: 700; text-anchor: middle; }
+    .small { font-size: 16px; font-weight: 500; text-anchor: middle; fill: #4B5563; }
+    .card-small { font-size: 14px; font-weight: 500; text-anchor: middle; fill: #4B5563; }
+    .mode { font-size: 18px; font-weight: 700; text-anchor: middle; }
+    .tag { font-size: 18px; font-weight: 700; text-anchor: middle; }
+    .ink { fill: none; stroke: #222222; stroke-width: 3.1; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+  <rect width="1200" height="675" fill="#F3F4F6"/>
+  <rect x="38" y="24" width="1124" height="626" rx="34" fill="url(#aluminum)" filter="url(#shadow)"/>
+  <rect x="57" y="43" width="1086" height="588" rx="24" fill="#FFFFFF" stroke="#8F98A1" stroke-width="4"/>
+  <circle cx="75" cy="61" r="6" fill="#7B848D"/><circle cx="1125" cy="61" r="6" fill="#7B848D"/><circle cx="75" cy="613" r="6" fill="#7B848D"/><circle cx="1125" cy="613" r="6" fill="#7B848D"/>
+  <rect x="424" y="627" width="352" height="14" rx="7" fill="#A6ADB5"/>
+  <text x="600" y="102" class="title" text-anchor="middle">临时 Markdown 如何变成持久结果</text>
+  <path d="M325 118 C454 110 753 126 875 116" class="ink" stroke-width="4"/>
+
+  <path d="M228 315 C242 309 252 309 267 315" class="ink" marker-end="url(#arrow)"/>
+  <path d="M398 315 C412 309 422 309 437 315" class="ink" marker-end="url(#arrow)"/>
+  <path d="M568 315 C582 309 592 309 607 315" class="ink" marker-end="url(#arrow)"/>
+  <path d="M738 315 C752 309 762 309 777 315" class="ink" marker-end="url(#arrow)"/>
+  <path d="M908 315 C922 309 932 309 947 315" class="ink" marker-end="url(#arrow)"/>
+
+  <g transform="rotate(-1 160 315)">
+    <rect x="92" y="230" width="136" height="170" rx="18" fill="#D9ECFF" stroke="#222222" stroke-width="3"/>
+    <path d="M125 266 H195 V327 H125 Z M138 283 H182 M138 298 H176 M138 313 H167" class="ink"/>
+    <text x="160" y="358" class="card-label">下载临时 MD</text><text x="160" y="383" class="card-small">markdown_url</text>
+  </g>
+  <g transform="rotate(1 330 315)">
+    <rect x="267" y="230" width="131" height="170" rx="18" fill="#FFFFFF" stroke="#222222" stroke-width="3"/>
+    <circle cx="320" cy="287" r="28" class="ink"/><path d="M340 307 L360 327" class="ink"/>
+    <text x="332" y="358" class="card-label">提取图片 URL</text><text x="332" y="383" class="card-small">按后缀去重</text>
+  </g>
+  <g transform="rotate(-1 500 315)">
+    <rect x="437" y="230" width="131" height="170" rx="18" fill="#FFF2A8" stroke="#222222" stroke-width="3"/>
+    <path d="M473 265 H531 V320 H473 Z M479 310 L491 294 L503 303 L518 282 L526 310" class="ink"/>
+    <circle cx="515" cy="278" r="5" fill="#222222"/>
+    <text x="502" y="358" class="card-label">逐张下载</text><text x="502" y="383" class="card-small">百度临时图片</text>
+  </g>
+  <g transform="rotate(1 670 315)">
+    <rect x="607" y="230" width="131" height="170" rx="18" fill="#FFFFFF" stroke="#222222" stroke-width="3"/>
+    <path d="M638 272 C638 255 707 255 707 272 V310 C707 327 638 327 638 310 Z" class="ink"/>
+    <path d="M638 272 C638 290 707 290 707 272 M638 290 C638 308 707 308 707 290" class="ink" stroke-width="2.4"/>
+    <text x="672" y="358" class="card-label">上传 OSS</text><text x="672" y="383" class="card-small">images/img_n</text>
+  </g>
+  <g transform="rotate(-1 840 315)">
+    <rect x="777" y="230" width="131" height="170" rx="18" fill="#FFF2A8" stroke="#222222" stroke-width="3"/>
+    <path d="M809 274 H878 M809 292 H861 M809 310 H870" class="ink"/>
+    <path d="M815 326 C831 316 856 337 874 325" class="ink" stroke-width="2.4"/>
+    <text x="842" y="358" class="card-label">替换链接</text><text x="842" y="383" class="card-small">临时 → 自有 OSS</text>
+  </g>
+  <g transform="rotate(1 1010 315)">
+    <rect x="947" y="230" width="131" height="170" rx="18" fill="#D9ECFF" stroke="#222222" stroke-width="3"/>
+    <path d="M980 262 H1028 L1045 280 V329 H980 Z M1028 262 V281 H1045" class="ink"/>
+    <path d="M992 295 H1033 M992 309 H1033" class="ink" stroke-width="2.4"/>
+    <text x="1012" y="358" class="card-label">最终 Markdown</text><text x="1012" y="383" class="card-small">上传并返回 URL</text>
+  </g>
+
+  <path d="M1012 400 C1012 433 910 437 876 464" class="ink" marker-end="url(#arrow)"/>
+  <g transform="rotate(-1 730 500)">
+    <rect x="485" y="455" width="490" height="92" rx="16" fill="#FFFFFF" stroke="#222222" stroke-width="2.8"/>
+    <rect x="510" y="474" width="190" height="52" rx="12" fill="#FFF2A8"/>
+    <rect x="760" y="474" width="190" height="52" rx="12" fill="#D9ECFF"/>
+    <text x="605" y="507" class="mode">public：永久公开 URL</text>
+    <text x="855" y="507" class="mode">signed：限时签名 URL</text>
+  </g>
+  <g transform="rotate(1 270 500)">
+    <rect x="105" y="460" width="330" height="82" rx="15" fill="#FFF2A8" stroke="#222222" stroke-width="2.6"/>
+    <text x="270" y="492" class="label">为什么必须转存？</text>
+    <text x="270" y="520" class="small">百度结果与图片 URL 都是临时资源</text>
+  </g>
+</svg>

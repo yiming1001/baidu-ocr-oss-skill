@@ -40,7 +40,7 @@ PADDLE_VL_MODEL = BaiduParserModel(
     display_name="Baidu PaddleOCR-VL",
     submit_url="https://aip.baidubce.com/rest/2.0/brain/online/v2/paddle-vl-parser/task",
     query_url="https://aip.baidubce.com/rest/2.0/brain/online/v2/paddle-vl-parser/task/query",
-    running_statuses={"pending", "processing"},
+    running_statuses={"pending", "processing", "running"},
 )
 
 UNLIMITED_OCR_MODEL = BaiduParserModel(
@@ -48,7 +48,7 @@ UNLIMITED_OCR_MODEL = BaiduParserModel(
     display_name="Baidu Unlimited-OCR",
     submit_url="https://aip.baidubce.com/rest/2.0/brain/online/v2/unlimited-ocr-parser/task",
     query_url="https://aip.baidubce.com/rest/2.0/brain/online/v2/unlimited-ocr-parser/task/query",
-    running_statuses={"pending", "running"},
+    running_statuses={"pending", "running", "processing"},
 )
 
 MODEL_ALIASES = {
@@ -118,13 +118,15 @@ def build_oss_public_url(bucket_name: str, endpoint: str, object_key: str) -> st
     return f"https://{bucket_name}.{endpoint_host}/{quote(object_key, safe='/')}"
 
 
-def create_bucket(config: dict) -> tuple[oss2.Bucket, str, str]:
+def create_bucket(config: dict, connect_timeout: int = 120) -> tuple[oss2.Bucket, str, str]:
     access_key_id = required_config(config, "oss_access_key_id", "OSS_ACCESS_KEY_ID")
     access_key_secret = required_config(config, "oss_access_key_secret", "OSS_ACCESS_KEY_SECRET")
     endpoint = required_config(config, "oss_endpoint", "OSS_ENDPOINT")
     bucket_name = required_config(config, "oss_bucket", "OSS_BUCKET")
     auth = oss2.Auth(access_key_id, access_key_secret)
-    return oss2.Bucket(auth, endpoint, bucket_name), bucket_name, endpoint
+    # 延长连接超时，缓解网络较慢时的上传/下载超时
+    bucket = oss2.Bucket(auth, endpoint, bucket_name, connect_timeout=connect_timeout)
+    return bucket, bucket_name, endpoint
 
 
 def normalize_prefix(prefix: str) -> str:
@@ -136,6 +138,7 @@ def upload_local_file_to_oss(
     config: dict,
     local_file: str,
     input_prefix: str | None = None,
+    status_callback: StatusCallback = None,
 ) -> dict[str, str]:
     """Upload one local source file with public-read ACL and return its permanent OSS URL."""
     source_path = Path(local_file).expanduser().resolve()
@@ -152,11 +155,34 @@ def upload_local_file_to_oss(
     prefix = normalize_prefix(str(input_prefix or config_value(config, "input_prefix", default="ocr-test/")))
     object_key = f"{prefix}{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:12]}-{source_path.name}"
     content_type = mimetypes.guess_type(source_path.name)[0] or "application/octet-stream"
-    bucket.put_object_from_file(
-        object_key,
-        str(source_path),
-        headers={headers.OSS_OBJECT_ACL: oss2.OBJECT_ACL_PUBLIC_READ, "Content-Type": content_type},
-    )
+    upload_headers = {headers.OSS_OBJECT_ACL: oss2.OBJECT_ACL_PUBLIC_READ, "Content-Type": content_type}
+
+    # 用断点续传（分片上传）：文件切成小块分别上传，单块超时可自动续传，
+    # 对不稳定/较慢的网络更可靠。整体再包一层重试。
+    last_exc: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            oss2.resumable_upload(
+                bucket,
+                object_key,
+                str(source_path),
+                headers=upload_headers,
+                multipart_threshold=1 * 1024 * 1024,
+                part_size=1 * 1024 * 1024,
+                num_threads=3,
+            )
+            break
+        except (oss2.exceptions.RequestError, oss2.exceptions.ServerError) as exc:
+            last_exc = exc
+            message = f"上传到 OSS 超时/失败，正在重试（第 {attempt}/3 次）…"
+            print(message, file=sys.stderr)
+            if status_callback:
+                status_callback(message)
+            if attempt < 3:
+                time.sleep(3 * attempt)
+    else:
+        raise RuntimeError(f"多次重试后仍无法上传到 OSS：{last_exc}")
+
     return {
         "source_key": object_key,
         "source_url": build_oss_public_url(bucket_name, endpoint, object_key),
@@ -200,15 +226,47 @@ def put_result_object(
     )
 
 
-def get_baidu_access_token(session: requests.Session, api_key: str, secret_key: str) -> str:
-    response = session.post(
+def post_with_retry(
+    session: requests.Session,
+    url: str,
+    *,
+    retries: int = 3,
+    backoff: float = 3.0,
+    status_callback: StatusCallback = None,
+    **kwargs,
+) -> requests.Response:
+    """对百度接口的 POST 请求做超时/连接错误重试，缓解偶发网络抖动。"""
+    last_exc: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            return session.post(url, **kwargs)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+            last_exc = exc
+            message = f"网络超时/连接失败，正在重试（第 {attempt}/{retries} 次）…"
+            print(message, file=sys.stderr)
+            if status_callback:
+                status_callback(message)
+            if attempt < retries:
+                time.sleep(backoff * attempt)
+    raise RuntimeError(f"多次重试后仍无法连接百度接口：{last_exc}")
+
+
+def get_baidu_access_token(
+    session: requests.Session,
+    api_key: str,
+    secret_key: str,
+    status_callback: StatusCallback = None,
+) -> str:
+    response = post_with_retry(
+        session,
         "https://aip.baidubce.com/oauth/2.0/token",
         params={
             "grant_type": "client_credentials",
             "client_id": api_key,
             "client_secret": secret_key,
         },
-        timeout=30,
+        timeout=60,
+        status_callback=status_callback,
     )
     response.raise_for_status()
     payload = response.json()
@@ -237,15 +295,18 @@ def submit_parser_task(
     file_url: str,
     file_name: str,
     model_options: dict[str, str],
+    status_callback: StatusCallback = None,
 ) -> str:
     data = {"file_url": file_url, "file_name": file_name}
     data.update(model_options)
-    response = session.post(
+    response = post_with_retry(
+        session,
         model.submit_url,
         params={"access_token": access_token},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         data=data,
-        timeout=60,
+        timeout=120,
+        status_callback=status_callback,
     )
     response.raise_for_status()
     payload = response.json()
@@ -507,9 +568,11 @@ def run_document(
 
     with requests.Session() as session:
         update("Requesting Baidu access token")
-        access_token = get_baidu_access_token(session, api_key, secret_key)
+        access_token = get_baidu_access_token(session, api_key, secret_key, status_callback)
         update(f"Submitting {model.display_name} task")
-        task_id = submit_parser_task(session, access_token, model, file_url, file_name, model_options)
+        task_id = submit_parser_task(
+            session, access_token, model, file_url, file_name, model_options, status_callback
+        )
         update(f"Task submitted: {task_id}")
         result = wait_for_parser_result(
             session, access_token, model, task_id, poll_interval, max_wait, status_callback

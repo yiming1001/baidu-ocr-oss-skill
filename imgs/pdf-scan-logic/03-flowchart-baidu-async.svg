@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">百度异步 OCR 任务流程</title>
+  <desc id="desc">获取访问令牌、提交 PaddleOCR-VL 任务、获得任务 ID、轮询状态，并处理成功、失败和超时分支。</desc>
+  <defs>
+    <linearGradient id="aluminum" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EEF1F4"/><stop offset="0.5" stop-color="#C7CDD3"/><stop offset="1" stop-color="#9EA6AE"/></linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#374151" flood-opacity="0.20"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="4" orient="auto"><path d="M1 1 L9 4 L1 7" fill="none" stroke="#222222" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  </defs>
+  <style>
+    text { font-family: "Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #222222; }
+    .title { font-size: 38px; font-weight: 700; }
+    .label { font-size: 22px; font-weight: 700; text-anchor: middle; }
+    .small { font-size: 17px; font-weight: 500; text-anchor: middle; fill: #4B5563; }
+    .tiny { font-size: 14px; font-weight: 500; text-anchor: middle; fill: #4B5563; }
+    .tag { font-size: 18px; font-weight: 700; text-anchor: middle; }
+    .ink { fill: none; stroke: #222222; stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+  <rect width="1200" height="675" fill="#F3F4F6"/>
+  <rect x="38" y="24" width="1124" height="626" rx="34" fill="url(#aluminum)" filter="url(#shadow)"/>
+  <rect x="57" y="43" width="1086" height="588" rx="24" fill="#FFFFFF" stroke="#8F98A1" stroke-width="4"/>
+  <circle cx="75" cy="61" r="6" fill="#7B848D"/><circle cx="1125" cy="61" r="6" fill="#7B848D"/><circle cx="75" cy="613" r="6" fill="#7B848D"/><circle cx="1125" cy="613" r="6" fill="#7B848D"/>
+  <rect x="424" y="627" width="352" height="14" rx="7" fill="#A6ADB5"/>
+  <text x="600" y="102" class="title" text-anchor="middle">百度异步 OCR 如何运行</text>
+  <path d="M386 118 C470 111 732 125 814 116" class="ink" stroke-width="4"/>
+
+  <path d="M260 245 C282 239 300 239 322 245" class="ink" marker-end="url(#arrow)"/>
+  <path d="M492 245 C512 239 530 239 550 245" class="ink" marker-end="url(#arrow)"/>
+  <path d="M720 245 C742 239 760 239 782 245" class="ink" marker-end="url(#arrow)"/>
+
+  <g transform="rotate(-1 180 245)">
+    <rect x="100" y="180" width="160" height="130" rx="18" fill="#D9ECFF" stroke="#222222" stroke-width="3"/>
+    <circle cx="180" cy="217" r="20" class="ink"/>
+    <path d="M180 199 V217 L192 226" class="ink"/>
+    <text x="180" y="270" class="label">获取 Token</text><text x="180" y="295" class="small">超时 60 秒</text>
+  </g>
+  <g transform="rotate(1 407 245)">
+    <rect x="322" y="180" width="170" height="130" rx="18" fill="#FFF2A8" stroke="#222222" stroke-width="3"/>
+    <path d="M357 216 H435 M357 232 H435 M357 248 H420" class="ink"/>
+    <text x="407" y="280" class="label">提交解析任务</text><text x="407" y="302" class="small">PaddleOCR-VL</text>
+  </g>
+  <g transform="rotate(-1 635 245)">
+    <rect x="550" y="180" width="170" height="130" rx="18" fill="#FFFFFF" stroke="#222222" stroke-width="3"/>
+    <text x="635" y="223" class="small">百度返回</text><text x="635" y="258" class="label">task_id</text>
+    <path d="M589 272 C610 280 660 265 682 274" class="ink" stroke-width="2.6"/>
+  </g>
+  <g>
+    <path d="M870 166 L958 245 L870 324 L782 245 Z" fill="#D9ECFF" stroke="#222222" stroke-width="3" stroke-linejoin="round"/>
+    <text x="870" y="232" class="label">查询状态</text><text x="870" y="261" class="small">每隔 poll_interval</text><text x="870" y="284" class="small">直到 max_wait</text>
+  </g>
+
+  <path d="M870 324 C870 358 768 357 745 390" class="ink" marker-end="url(#arrow)"/>
+  <text x="820" y="350" class="tag">success</text>
+  <g transform="rotate(-1 645 431)">
+    <rect x="535" y="385" width="220" height="92" rx="17" fill="#FFF2A8" stroke="#222222" stroke-width="3"/>
+    <text x="645" y="422" class="label">取得结果地址</text><text x="645" y="451" class="tiny">markdown_url / 坐标 JSON</text>
+  </g>
+
+  <path d="M958 245 C1032 243 1057 286 1038 351 C1024 400 940 402 917 335" class="ink" marker-end="url(#arrow)"/>
+  <text x="1032" y="286" class="tag">处理中</text>
+  <g transform="rotate(1 987 457)">
+    <rect x="850" y="412" width="274" height="90" rx="16" fill="#D9ECFF" stroke="#222222" stroke-width="2.6"/>
+    <text x="987" y="447" class="label">pending / running</text><text x="987" y="476" class="small">processing → 回到查询</text>
+  </g>
+
+  <path d="M782 245 C734 277 725 334 707 378" class="ink" stroke-dasharray="7 8" marker-end="url(#arrow)"/>
+  <text x="700" y="351" class="tag">failed / 超时</text>
+  <g transform="rotate(-1 340 461)">
+    <rect x="110" y="411" width="435" height="112" rx="16" fill="#FFFFFF" stroke="#222222" stroke-width="2.6"/>
+    <text x="340" y="446" class="label">进入 error，网页显示异常</text>
+    <text x="340" y="476" class="tiny">Token 与提交最多重试 3 次</text>
+    <text x="340" y="500" class="tiny">查询阶段目前未统一重试</text>
+  </g>
+  <path d="M188 527 C304 539 422 526 534 536" class="ink" stroke-width="2.6"/>
+</svg>

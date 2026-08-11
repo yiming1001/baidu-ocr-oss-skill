@@ -63,22 +63,24 @@ class ViewerDataTests(unittest.TestCase):
 
 class LocalUploadTests(unittest.TestCase):
     def test_uploads_only_the_named_local_file_with_public_acl(self):
-        class FakeBucket:
-            def __init__(self):
-                self.calls = []
+        bucket = object()
+        calls = []
 
-            def put_object_from_file(self, key, filename, headers=None):
-                self.calls.append((key, filename, headers))
+        def resumable_upload(bucket_arg, key, filename, headers=None, **kwargs):
+            calls.append((bucket_arg, key, filename, headers, kwargs))
 
-        bucket = FakeBucket()
         with tempfile.NamedTemporaryFile(suffix=".pdf") as source:
             source.write(b"%PDF-test")
             source.flush()
-            with patch.object(OCR, "create_bucket", return_value=(bucket, "example-bucket", "oss-cn-beijing.aliyuncs.com")):
+            with (
+                patch.object(OCR, "create_bucket", return_value=(bucket, "example-bucket", "oss-cn-beijing.aliyuncs.com")),
+                patch.object(OCR.oss2, "resumable_upload", side_effect=resumable_upload),
+            ):
                 upload = OCR.upload_local_file_to_oss({}, source.name, "ocr-test/")
 
-        self.assertEqual(len(bucket.calls), 1)
-        key, _, request_headers = bucket.calls[0]
+        self.assertEqual(len(calls), 1)
+        upload_bucket, key, _, request_headers, _ = calls[0]
+        self.assertIs(upload_bucket, bucket)
         self.assertTrue(key.startswith("ocr-test/"))
         self.assertEqual(request_headers["x-oss-object-acl"], OCR.oss2.OBJECT_ACL_PUBLIC_READ)
         self.assertEqual(upload["source_key"], key)
