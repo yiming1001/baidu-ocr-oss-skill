@@ -85,6 +85,8 @@ def _run_job(job_id: str, params: dict) -> None:
 
         merged = {}
         if params.get("local_path"):
+            if storage_mode == "local":
+                _append_message(job_id, "本地结果模式：原始文件将临时上传到 OSS，供百度 OCR 读取")
             _append_message(job_id, "正在上传本地文件到 OSS ...")
             upload = upload_local_file_to_oss(config, params["local_path"], status_callback=status_callback)
             merged.update(upload)
