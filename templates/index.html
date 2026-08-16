@@ -118,7 +118,7 @@
   <div class="wrap">
     <header>
       <h1>📄 百度 OCR 可视化界面</h1>
-      <p>上传本地文件或粘贴 URL，自动上传到 OSS、调用百度 OCR，并生成可视化查看页面。</p>
+      <p>上传本地文件或粘贴 URL，调用百度 OCR，并将结果保存到本地或 OSS。</p>
     </header>
 
     <div id="banner" class="banner ok">正在读取配置…</div>
@@ -157,6 +157,13 @@
 
       <div class="row">
         <div class="field">
+          <label class="lbl">结果存储</label>
+          <select id="storage-select" onchange="updateStorageUi()">
+            <option value="local">本地（仅本机可访问）</option>
+            <option value="cloud">云端 OSS</option>
+          </select>
+        </div>
+        <div class="field">
           <label class="lbl">识别模型</label>
           <select id="model-select">
             <option value="paddle_vl">PaddleOCR-VL（复杂版面 / 表格 / 图表，含可视化）</option>
@@ -164,7 +171,7 @@
           </select>
         </div>
         <div class="field">
-          <label class="lbl">输出方式</label>
+          <label class="lbl">云端链接方式</label>
           <select id="output-select">
             <option value="public">public（公开永久链接）</option>
             <option value="signed">signed（私有签名链接）</option>
@@ -219,8 +226,17 @@
         banner.textContent = "⚠ 未检测到有效配置，请先填写 config/local.json";
       }
       if (cfg.model) document.getElementById("model-select").value = cfg.model;
+      if (cfg.storage_mode) document.getElementById("storage-select").value = cfg.storage_mode;
       if (cfg.output_url_mode) document.getElementById("output-select").value = cfg.output_url_mode;
+      updateStorageUi();
     });
+
+    function updateStorageUi() {
+      const isLocal = document.getElementById("storage-select").value === "local";
+      const output = document.getElementById("output-select");
+      output.disabled = isLocal;
+      output.title = isLocal ? "本地模式不使用云端链接" : "";
+    }
 
     function switchMode(m) {
       mode = m;
@@ -253,6 +269,7 @@
       const fd = new FormData();
       fd.append("mode", mode);
       fd.append("model", document.getElementById("model-select").value);
+      fd.append("storage_mode", document.getElementById("storage-select").value);
       fd.append("output_url_mode", document.getElementById("output-select").value);
       fd.append("generate_viewer", document.getElementById("viewer-check").checked);
 

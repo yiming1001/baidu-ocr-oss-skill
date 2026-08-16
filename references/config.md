@@ -12,7 +12,7 @@ For this local machine, prefer `config/local.json`. Do not commit or share it.
 
 ## Current Limits
 
-- Output storage must be Aliyun OSS. This Skill currently uses the `oss2` Python SDK only.
+- Cloud output storage uses Aliyun OSS. Local mode stores generated Markdown, images, and viewer files beneath `.results/`.
 - Supported Baidu models are limited to `paddle_vl` and `unlimited_ocr`.
 - The selected Baidu OCR API must be activated on the Baidu Intelligent Cloud account behind the configured API Key / Secret Key.
 - Aliyun credentials must have upload permission for the target bucket. Public output also requires permission to set object ACL to `public-read` during upload.
@@ -31,6 +31,9 @@ For this local machine, prefer `config/local.json`. Do not commit or share it.
   "input_file_url": "",
   "input_prefix": "ocr-test/",
   "output_prefix": "ocr_result/api/",
+  "storage_mode": "cloud",
+  "local_output_dir": ".results",
+  "local_url_prefix": "/results",
   "output_url_mode": "public",
   "signed_url_expires": 604800,
   "poll_interval": 5,
@@ -64,6 +67,12 @@ The OCR input file must be accessible by Baidu's servers:
 - Keep the URL under Baidu's documented length limit.
 - Avoid hotlink protection, CDN auth, IP allowlists, or referer rules that block Baidu.
 
+## Storage Modes
+
+`cloud` is the default. Result Markdown, images, and viewer HTML are uploaded to OSS.
+
+`local` writes those result artifacts under `local_output_dir` (default `.results/`). When using the Flask console, they are available only from the same machine at `/results/...`. The Baidu OCR request itself remains cloud-based; local uploads still need a temporary URL that Baidu can access.
+
 ## Output URL Modes
 
 `public`:
@@ -78,7 +87,7 @@ The OCR input file must be accessible by Baidu's servers:
 - Markdown contains signed URLs.
 - URLs expire according to `--signed-url-expires`.
 
-`--local-file --model paddle_vl` requires `public` output, because it publishes permanent public Markdown and an interactive `viewer.html`.
+`--local-file --model paddle_vl` requires `public` output only in `cloud` mode. Local mode serves the generated viewer from the local Flask service.
 
 ## Example
 

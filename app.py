@@ -10,7 +10,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 # 复用现有脚本里的核心逻辑
@@ -27,6 +27,8 @@ SKILL_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SKILL_DIR / "config" / "local.json"
 UPLOAD_DIR = SKILL_DIR / ".uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+RESULTS_DIR = SKILL_DIR / ".results"
+RESULTS_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__, template_folder=str(SKILL_DIR / "templates"))
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB 上传上限
@@ -72,11 +74,12 @@ def _run_job(job_id: str, params: dict) -> None:
             _append_message(job_id, message)
 
         model = get_model(params["model"])
+        storage_mode = params["storage_mode"]
         output_url_mode = params["output_url_mode"]
         generate_viewer = params["generate_viewer"]
 
         # paddle_vl 生成可视化查看器时必须用 public 模式
-        if generate_viewer and model == PADDLE_VL_MODEL and output_url_mode != "public":
+        if storage_mode == "cloud" and generate_viewer and model == PADDLE_VL_MODEL and output_url_mode != "public":
             output_url_mode = "public"
             _append_message(job_id, "提示：可视化查看器需要 public 模式，已自动切换为 public")
 
@@ -100,6 +103,9 @@ def _run_job(job_id: str, params: dict) -> None:
             output_url_mode=output_url_mode,
             generate_viewer=generate_viewer,
             status_callback=status_callback,
+            storage_mode=storage_mode,
+            local_output_dir=str(RESULTS_DIR),
+            local_url_prefix="/results",
         )
         merged.update(result)
         _finish_job(job_id, result=merged)
@@ -121,6 +127,11 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/results/<path:result_path>")
+def local_result(result_path):
+    return send_from_directory(RESULTS_DIR, result_path)
+
+
 @app.route("/api/config")
 def api_config():
     """返回非敏感的默认配置，用于预填界面（不含任何密钥）。"""
@@ -129,6 +140,7 @@ def api_config():
         {
             "configured": bool(config.get("oss_bucket") and config.get("baidu_api_key")),
             "model": config_value(config, "model", default="paddle_vl"),
+            "storage_mode": config_value(config, "storage_mode", default="cloud"),
             "output_url_mode": config_value(config, "output_url_mode", default="public"),
             "oss_bucket": config_value(config, "oss_bucket", default=""),
             "input_file_url": config_value(config, "input_file_url", default=""),
@@ -140,11 +152,13 @@ def api_config():
 def api_run():
     mode = request.form.get("mode", "file")
     model = request.form.get("model", "paddle_vl")
+    storage_mode = request.form.get("storage_mode", "cloud")
     output_url_mode = request.form.get("output_url_mode", "public")
     generate_viewer = request.form.get("generate_viewer", "true").lower() == "true"
 
     params = {
         "model": model,
+        "storage_mode": storage_mode,
         "output_url_mode": output_url_mode,
         "generate_viewer": generate_viewer,
     }

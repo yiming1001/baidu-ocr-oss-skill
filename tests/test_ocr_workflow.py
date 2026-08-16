@@ -95,5 +95,86 @@ class LocalUploadTests(unittest.TestCase):
         self.assertTrue(upload["source_url"].startswith("https://example-bucket.oss-cn-beijing.aliyuncs.com/ocr-test/"))
 
 
+class LocalOutputTests(unittest.TestCase):
+    def test_stores_images_and_rewrites_markdown_to_local_urls(self):
+        class FakeResponse:
+            def __init__(self, content, content_type):
+                self.content = content
+                self.headers = {"Content-Type": content_type}
+
+            def raise_for_status(self):
+                pass
+
+        class FakeSession:
+            def get(self, url, timeout):
+                return FakeResponse(url.encode("utf-8"), "image/jpeg")
+
+        first_url = "https://baidu.example/first.jpg"
+        second_url = "https://baidu.example/second.jpg"
+        markdown = f"![first]({first_url})\n![second]({second_url})"
+        with tempfile.TemporaryDirectory() as output_dir:
+            rewritten, mapping = OCR.transfer_markdown_images_to_local(
+                FakeSession(),
+                markdown,
+                Path(output_dir),
+                "/results/paddle_vl/task-1",
+            )
+
+            self.assertEqual(mapping[first_url], "/results/paddle_vl/task-1/images/img_0.jpg")
+            self.assertEqual(mapping[second_url], "/results/paddle_vl/task-1/images/img_1.jpg")
+            self.assertNotIn(first_url, rewritten)
+            self.assertNotIn(second_url, rewritten)
+            self.assertEqual((Path(output_dir) / "images" / "img_0.jpg").read_bytes(), first_url.encode("utf-8"))
+            self.assertEqual((Path(output_dir) / "images" / "img_1.jpg").read_bytes(), second_url.encode("utf-8"))
+
+    def test_run_document_writes_local_results_without_an_oss_bucket(self):
+        class FakeResponse:
+            content = b"image-bytes"
+            headers = {"Content-Type": "image/jpeg"}
+
+            def raise_for_status(self):
+                pass
+
+        class FakeSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def get(self, url, timeout):
+                return FakeResponse()
+
+        viewer_data = {
+            "file_name": "report.pdf",
+            "pages": [{"page_num": 0, "meta": {"page_width": 1, "page_height": 1}, "layouts": []}],
+        }
+        with tempfile.TemporaryDirectory() as output_dir:
+            with (
+                patch.object(OCR.requests, "Session", return_value=FakeSession()),
+                patch.object(OCR, "create_bucket", side_effect=AssertionError("local mode must not create an OSS bucket")),
+                patch.object(OCR, "get_baidu_access_token", return_value="token"),
+                patch.object(OCR, "submit_parser_task", return_value="task-1"),
+                patch.object(OCR, "wait_for_parser_result", return_value={"markdown_url": "https://baidu.example/result.md", "parse_result_url": "https://baidu.example/result.json"}),
+                patch.object(OCR, "download_text", return_value="![image](https://baidu.example/image.jpg)"),
+                patch.object(OCR, "download_json", return_value=viewer_data),
+            ):
+                result = OCR.run_document(
+                    {"baidu_api_key": "key", "baidu_secret_key": "secret"},
+                    "https://example.com/report.pdf",
+                    generate_viewer=True,
+                    storage_mode="local",
+                    local_output_dir=output_dir,
+                    local_url_prefix="/results",
+                )
+
+            task_dir = Path(output_dir) / "paddle_vl" / "task-1"
+            self.assertEqual(result["markdown_url"], "/results/paddle_vl/task-1/report_final.md")
+            self.assertEqual(result["viewer_url"], "/results/paddle_vl/task-1/report_viewer.html")
+            self.assertTrue((task_dir / "report_final.md").is_file())
+            self.assertTrue((task_dir / "report_viewer.html").is_file())
+            self.assertEqual((task_dir / "images" / "img_0.jpg").read_bytes(), b"image-bytes")
+
+
 if __name__ == "__main__":
     unittest.main()

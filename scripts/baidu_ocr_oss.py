@@ -149,6 +149,52 @@ def build_task_output_prefix(output_prefix_base: str, model_id: str, task_id: st
     return f"{base_prefix}{model_segment}/{task_segment}/"
 
 
+def normalize_storage_mode(value: str | None) -> str:
+    mode = str(value or "cloud").strip().lower().replace("-", "_")
+    if mode not in {"local", "cloud"}:
+        raise ValueError("storage_mode must be local or cloud")
+    return mode
+
+
+def resolve_local_output_dir(output_dir: str | None) -> Path:
+    path = Path(output_dir or ".results").expanduser()
+    if not path.is_absolute():
+        path = SKILL_DIR / path
+    return path.resolve()
+
+
+def build_local_result_url(url_prefix: str, relative_path: str) -> str:
+    prefix = str(url_prefix or "/results").rstrip("/")
+    normalized = str(relative_path).replace(os.sep, "/").lstrip("/")
+    return f"{prefix}/{quote(normalized, safe='/')}"
+
+
+def transfer_markdown_images_to_local(
+    session: requests.Session,
+    markdown_content: str,
+    result_dir: Path,
+    url_prefix: str,
+    status_callback: StatusCallback = None,
+) -> tuple[str, dict[str, str]]:
+    """Download OCR images into one local task directory and rewrite Markdown links."""
+    image_dir = result_dir / "images"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    url_mapping: dict[str, str] = {}
+    image_urls = extract_image_urls(markdown_content)
+    for index, image_url in enumerate(image_urls):
+        if status_callback:
+            status_callback(f"保存 OCR 图片 {index + 1}/{len(image_urls)} 到本地")
+        image_response = session.get(image_url, timeout=120)
+        image_response.raise_for_status()
+        suffix = guess_image_suffix(image_url, image_response.headers.get("Content-Type"))
+        relative_path = f"images/img_{index}{suffix}"
+        (result_dir / relative_path).write_bytes(image_response.content)
+        url_mapping[image_url] = build_local_result_url(url_prefix, relative_path)
+    for old_url, new_url in url_mapping.items():
+        markdown_content = markdown_content.replace(old_url, new_url)
+    return markdown_content, url_mapping
+
+
 def upload_local_file_to_oss(
     config: dict,
     local_file: str,
@@ -557,10 +603,16 @@ def run_document(
     model_options: dict[str, str] | None = None,
     generate_viewer: bool = False,
     status_callback: StatusCallback = None,
+    storage_mode: str | None = None,
+    local_output_dir: str | None = None,
+    local_url_prefix: str | None = None,
 ) -> dict:
     api_key = required_config(config, "baidu_api_key", "BAIDU_API_KEY")
     secret_key = required_config(config, "baidu_secret_key", "BAIDU_SECRET_KEY")
-    bucket, bucket_name, endpoint = create_bucket(config)
+    storage_mode = normalize_storage_mode(storage_mode or config_value(config, "storage_mode", default="cloud"))
+    bucket = bucket_name = endpoint = None
+    if storage_mode == "cloud":
+        bucket, bucket_name, endpoint = create_bucket(config)
     model = get_model(str(model_name or config_value(config, "model", default="paddle_vl")))
     output_prefix_base = output_prefix_base or config_value(config, "output_prefix", default="ocr_result/api/")
     output_url_mode = output_url_mode or config_value(config, "output_url_mode", default="signed")
@@ -572,7 +624,7 @@ def run_document(
     if generate_viewer:
         if model != PADDLE_VL_MODEL:
             raise ValueError("The visual viewer is available only for paddle_vl.")
-        if output_url_mode != "public":
+        if storage_mode == "cloud" and output_url_mode != "public":
             raise ValueError("The visual viewer requires output_url_mode=public.")
         model_options.setdefault("return_span_boxes", "true")
 
@@ -591,6 +643,7 @@ def run_document(
         result = wait_for_parser_result(
             session, access_token, model, task_id, poll_interval, max_wait, status_callback
         )
+        task_segment = normalize_object_segment(task_id, "task")
         # Keep every task's Markdown, images, and viewer together so later OCR
         # runs cannot overwrite the assets referenced by an earlier result.
         output_prefix = build_task_output_prefix(str(output_prefix_base), model.id, task_id)
@@ -599,29 +652,49 @@ def run_document(
             raise RuntimeError(f"Successful task response has no markdown_url: {result}")
         update("Downloading Markdown result")
         markdown_content = download_text(session, markdown_url)
-        markdown_content, image_mapping = transfer_markdown_images_to_oss(
-            session,
-            bucket,
-            bucket_name,
-            endpoint,
-            markdown_content,
-            f"{output_prefix}images/",
-            str(output_url_mode),
-            signed_url_expires,
-            status_callback,
-        )
-        final_md_key = f"{output_prefix}{Path(file_name).stem}_final.md"
-        update("Saving final Markdown to OSS")
-        final_md_url = put_result_object(
-            bucket,
-            bucket_name,
-            endpoint,
-            final_md_key,
-            markdown_content.encode("utf-8"),
-            str(output_url_mode),
-            signed_url_expires,
-            "text/markdown; charset=utf-8",
-        )
+        if storage_mode == "local":
+            local_root = resolve_local_output_dir(
+                local_output_dir or config_value(config, "local_output_dir", default=".results")
+            )
+            local_task_dir = local_root / model.id / task_segment
+            local_task_dir.mkdir(parents=True, exist_ok=True)
+            local_url_prefix = local_url_prefix or config_value(config, "local_url_prefix", default="/results")
+            markdown_content, image_mapping = transfer_markdown_images_to_local(
+                session,
+                markdown_content,
+                local_task_dir,
+                str(local_url_prefix),
+                status_callback,
+            )
+            final_md_relative = f"{model.id}/{task_segment}/{Path(file_name).stem}_final.md"
+            final_md_key = final_md_relative
+            final_md_url = build_local_result_url(str(local_url_prefix), final_md_relative)
+            update("保存最终 Markdown 到本地")
+            (local_task_dir / f"{Path(file_name).stem}_final.md").write_text(markdown_content, encoding="utf-8")
+        else:
+            markdown_content, image_mapping = transfer_markdown_images_to_oss(
+                session,
+                bucket,
+                bucket_name,
+                endpoint,
+                markdown_content,
+                f"{output_prefix}images/",
+                str(output_url_mode),
+                signed_url_expires,
+                status_callback,
+            )
+            final_md_key = f"{output_prefix}{Path(file_name).stem}_final.md"
+            update("Saving final Markdown to OSS")
+            final_md_url = put_result_object(
+                bucket,
+                bucket_name,
+                endpoint,
+                final_md_key,
+                markdown_content.encode("utf-8"),
+                str(output_url_mode),
+                signed_url_expires,
+                "text/markdown; charset=utf-8",
+            )
         viewer_url = None
         viewer_key = None
         parse_result_available = bool(result.get("parse_result_url"))
@@ -633,18 +706,25 @@ def run_document(
             update("Downloading PaddleOCR-VL coordinates")
             viewer_data = normalize_vl_parse_result(download_json(session, parse_result_url))
             viewer_html = build_viewer_html(viewer_data, file_url, markdown_content)
-            viewer_key = f"{output_prefix}{Path(file_name).stem}_viewer.html"
-            update("Publishing public visual viewer")
-            viewer_url = put_result_object(
-                bucket,
-                bucket_name,
-                endpoint,
-                viewer_key,
-                viewer_html.encode("utf-8"),
-                "public",
-                signed_url_expires,
-                "text/html; charset=utf-8",
-            )
+            if storage_mode == "local":
+                viewer_relative = f"{model.id}/{task_segment}/{Path(file_name).stem}_viewer.html"
+                viewer_key = viewer_relative
+                viewer_url = build_local_result_url(str(local_url_prefix), viewer_relative)
+                update("保存可视化 viewer 到本地")
+                (local_task_dir / f"{Path(file_name).stem}_viewer.html").write_text(viewer_html, encoding="utf-8")
+            else:
+                viewer_key = f"{output_prefix}{Path(file_name).stem}_viewer.html"
+                update("Publishing public visual viewer")
+                viewer_url = put_result_object(
+                    bucket,
+                    bucket_name,
+                    endpoint,
+                    viewer_key,
+                    viewer_html.encode("utf-8"),
+                    "public",
+                    signed_url_expires,
+                    "text/html; charset=utf-8",
+                )
         elif model == UNLIMITED_OCR_MODEL:
             viewer_unavailable_reason = "Unlimited-OCR currently has no supported coordinate result for visual linking."
 
@@ -681,15 +761,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-wait", type=int)
     parser.add_argument("--model-option", action="append", default=[], help="key=value; repeatable")
     parser.add_argument("--generate-viewer", action="store_true", help="Generate a public PaddleOCR-VL viewer.")
+    parser.add_argument("--storage-mode", choices=["local", "cloud"], help="Store outputs locally or in OSS.")
+    parser.add_argument("--local-output-dir", help="Local result directory when --storage-mode=local.")
+    parser.add_argument("--local-url-prefix", help="URL prefix for local results, default /results.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable result JSON.")
     return parser
 
 
 def run(args: argparse.Namespace) -> dict:
     config = load_config(args.config)
+    storage_mode = normalize_storage_mode(args.storage_mode or config_value(config, "storage_mode", default="cloud"))
     if args.local_file:
         model = get_model(str(args.model or config_value(config, "model", default="paddle_vl")))
-        if model == PADDLE_VL_MODEL and (args.output_url_mode or config_value(config, "output_url_mode", default="signed")) != "public":
+        if (
+            storage_mode == "cloud"
+            and model == PADDLE_VL_MODEL
+            and (args.output_url_mode or config_value(config, "output_url_mode", default="signed")) != "public"
+        ):
             raise ValueError("Local PaddleOCR-VL processing requires output_url_mode=public for its public viewer.")
         upload = upload_local_file_to_oss(config, args.local_file)
         result = run_document(
@@ -704,6 +792,9 @@ def run(args: argparse.Namespace) -> dict:
             max_wait=args.max_wait,
             model_options=parse_key_value_options(args.model_option),
             generate_viewer=model == PADDLE_VL_MODEL,
+            storage_mode=storage_mode,
+            local_output_dir=args.local_output_dir,
+            local_url_prefix=args.local_url_prefix,
         )
         return {**upload, **result}
     file_url = args.file_url or config_value(config, "input_file_url")
@@ -721,6 +812,9 @@ def run(args: argparse.Namespace) -> dict:
         max_wait=args.max_wait,
         model_options=parse_key_value_options(args.model_option),
         generate_viewer=args.generate_viewer,
+        storage_mode=storage_mode,
+        local_output_dir=args.local_output_dir,
+        local_url_prefix=args.local_url_prefix,
     )
 
 
