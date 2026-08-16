@@ -13,6 +13,9 @@ SPEC.loader.exec_module(OCR)
 
 
 class ViewerDataTests(unittest.TestCase):
+    def test_prefers_image_content_type_over_a_misleading_url_suffix(self):
+        self.assertEqual(OCR.guess_image_suffix("https://baidu.example/image.jpg", "image/png"), ".png")
+
     def test_task_outputs_are_isolated_by_task_id(self):
         first = OCR.build_task_output_prefix("ocr_result/api/", "paddle_vl", "task/one")
         second = OCR.build_task_output_prefix("ocr_result/api/", "paddle_vl", "task/two")
@@ -185,6 +188,10 @@ class LocalOutputTests(unittest.TestCase):
             self.assertEqual(result["source_url"], "/results/paddle_vl/task-1/source/report.pdf")
             self.assertTrue((task_dir / "report_final.md").is_file())
             self.assertTrue((task_dir / "report_viewer.html").is_file())
+            self.assertIn(
+                "/results/paddle_vl/task-1/images/img_0.jpg",
+                (task_dir / "report_final.md").read_text(encoding="utf-8"),
+            )
             self.assertEqual((task_dir / "images" / "img_0.jpg").read_bytes(), b"image-bytes")
             self.assertEqual((task_dir / "source" / "report.pdf").read_bytes(), b"%PDF-direct-upload")
 

@@ -463,13 +463,13 @@ def download_json(session: requests.Session, url: str) -> dict:
 
 
 def guess_image_suffix(url: str, content_type: str | None) -> str:
-    suffix = Path(urlparse(url).path).suffix
-    if suffix:
-        return suffix
     if content_type:
         guessed = mimetypes.guess_extension(content_type.split(";", 1)[0].strip())
         if guessed:
             return guessed
+    suffix = Path(urlparse(url).path).suffix
+    if suffix:
+        return suffix
     return ".png"
 
 
@@ -703,6 +703,9 @@ def run_document(
             local_task_dir = local_root / model.id / task_segment
             local_task_dir.mkdir(parents=True, exist_ok=True)
             local_url_prefix = local_url_prefix or config_value(config, "local_url_prefix", default="/results")
+            local_task_url_prefix = build_local_result_url(
+                str(local_url_prefix), f"{model.id}/{task_segment}"
+            )
             if local_source_path:
                 source_relative = f"{model.id}/{task_segment}/source/{local_source_path.name}"
                 source_target = local_root / source_relative
@@ -714,7 +717,7 @@ def run_document(
                 session,
                 markdown_content,
                 local_task_dir,
-                str(local_url_prefix),
+                local_task_url_prefix,
                 status_callback,
             )
             final_md_relative = f"{model.id}/{task_segment}/{Path(file_name).stem}_final.md"
