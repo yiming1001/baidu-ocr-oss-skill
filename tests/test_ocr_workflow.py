@@ -12,6 +12,14 @@ SPEC.loader.exec_module(OCR)
 
 
 class ViewerDataTests(unittest.TestCase):
+    def test_task_outputs_are_isolated_by_task_id(self):
+        first = OCR.build_task_output_prefix("ocr_result/api/", "paddle_vl", "task/one")
+        second = OCR.build_task_output_prefix("ocr_result/api/", "paddle_vl", "task/two")
+
+        self.assertEqual(first, "ocr_result/api/paddle_vl/task-one/")
+        self.assertEqual(second, "ocr_result/api/paddle_vl/task-two/")
+        self.assertNotEqual(first, second)
+
     def test_normalizes_line_boxes_without_baidu_urls(self):
         payload = {
             "file_name": "report.pdf",

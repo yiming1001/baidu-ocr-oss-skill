@@ -134,6 +134,21 @@ def normalize_prefix(prefix: str) -> str:
     return f"{value}/" if value else ""
 
 
+def normalize_object_segment(value: str, fallback: str = "item") -> str:
+    """Keep user/task identifiers safe and stable as one OSS path segment."""
+    segment = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip())
+    segment = segment.strip(".-")
+    return segment or fallback
+
+
+def build_task_output_prefix(output_prefix_base: str, model_id: str, task_id: str) -> str:
+    """Return an isolated output directory for one OCR task."""
+    base_prefix = normalize_prefix(str(output_prefix_base))
+    model_segment = normalize_object_segment(model_id, "model")
+    task_segment = normalize_object_segment(task_id, "task")
+    return f"{base_prefix}{model_segment}/{task_segment}/"
+
+
 def upload_local_file_to_oss(
     config: dict,
     local_file: str,
@@ -553,7 +568,6 @@ def run_document(
     poll_interval = poll_interval or int(config_value(config, "poll_interval", default=5))
     max_wait = max_wait or int(config_value(config, "max_wait", default=1800))
     file_name = str(file_name or unquote(Path(urlparse(file_url).path).name) or "input.pdf")
-    output_prefix = f"{str(output_prefix_base).rstrip('/')}/{model.id}/"
     model_options = dict(model_options or {})
     if generate_viewer:
         if model != PADDLE_VL_MODEL:
@@ -577,6 +591,9 @@ def run_document(
         result = wait_for_parser_result(
             session, access_token, model, task_id, poll_interval, max_wait, status_callback
         )
+        # Keep every task's Markdown, images, and viewer together so later OCR
+        # runs cannot overwrite the assets referenced by an earlier result.
+        output_prefix = build_task_output_prefix(str(output_prefix_base), model.id, task_id)
         markdown_url = result.get("markdown_url")
         if not markdown_url:
             raise RuntimeError(f"Successful task response has no markdown_url: {result}")
