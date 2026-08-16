@@ -1,3 +1,4 @@
+import base64
 import importlib.util
 import tempfile
 import unittest
@@ -150,30 +151,42 @@ class LocalOutputTests(unittest.TestCase):
             "pages": [{"page_num": 0, "meta": {"page_width": 1, "page_height": 1}, "layouts": []}],
         }
         with tempfile.TemporaryDirectory() as output_dir:
+            source_path = Path(output_dir) / "report.pdf"
+            source_path.write_bytes(b"%PDF-direct-upload")
+            submitted = {}
+
+            def submit_task(*args, **kwargs):
+                submitted.update(kwargs)
+                return "task-1"
+
             with (
                 patch.object(OCR.requests, "Session", return_value=FakeSession()),
                 patch.object(OCR, "create_bucket", side_effect=AssertionError("local mode must not create an OSS bucket")),
                 patch.object(OCR, "get_baidu_access_token", return_value="token"),
-                patch.object(OCR, "submit_parser_task", return_value="task-1"),
+                patch.object(OCR, "submit_parser_task", side_effect=submit_task),
                 patch.object(OCR, "wait_for_parser_result", return_value={"markdown_url": "https://baidu.example/result.md", "parse_result_url": "https://baidu.example/result.json"}),
                 patch.object(OCR, "download_text", return_value="![image](https://baidu.example/image.jpg)"),
                 patch.object(OCR, "download_json", return_value=viewer_data),
             ):
                 result = OCR.run_document(
                     {"baidu_api_key": "key", "baidu_secret_key": "secret"},
-                    "https://example.com/report.pdf",
                     generate_viewer=True,
                     storage_mode="local",
                     local_output_dir=output_dir,
                     local_url_prefix="/results",
+                    local_file=str(source_path),
                 )
 
             task_dir = Path(output_dir) / "paddle_vl" / "task-1"
+            self.assertIsNone(submitted["file_url"])
+            self.assertEqual(submitted["file_data"], base64.b64encode(b"%PDF-direct-upload").decode("ascii"))
             self.assertEqual(result["markdown_url"], "/results/paddle_vl/task-1/report_final.md")
             self.assertEqual(result["viewer_url"], "/results/paddle_vl/task-1/report_viewer.html")
+            self.assertEqual(result["source_url"], "/results/paddle_vl/task-1/source/report.pdf")
             self.assertTrue((task_dir / "report_final.md").is_file())
             self.assertTrue((task_dir / "report_viewer.html").is_file())
             self.assertEqual((task_dir / "images" / "img_0.jpg").read_bytes(), b"image-bytes")
+            self.assertEqual((task_dir / "source" / "report.pdf").read_bytes(), b"%PDF-direct-upload")
 
 
 if __name__ == "__main__":

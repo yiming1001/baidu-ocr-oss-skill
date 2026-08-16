@@ -9,7 +9,7 @@ description: Upload local files to Aliyun OSS, submit Baidu PaddleOCR-VL or Unli
 
 This skill runs a private local workflow around Baidu Intelligent Cloud OCR:
 
-1. Upload one local file to the configured OSS input prefix with public-read ACL, or submit an existing OSS URL from the CLI.
+1. In local mode, submit one local file directly to Baidu as Base64 `file_data`; in cloud mode, upload it to the configured OSS input prefix or submit an existing URL.
 3. Choose either `paddle_vl` or `unlimited_ocr`, then poll the async task until it succeeds or fails.
 4. Download Baidu's Markdown result, transfer temporary images into the user's OSS bucket, and upload final Markdown.
 5. For `paddle_vl`, request line coordinates and publish one public `viewer.html` beside the result Markdown.
@@ -18,7 +18,7 @@ This is not offline OCR. Baidu still performs the OCR. Keep all credentials in t
 
 ## Current Limits
 
-- Storage is Aliyun OSS only. The runner currently depends on the `oss2` SDK and does not support S3, Tencent COS, Huawei OBS, local filesystem output, or other object storage providers.
+- Cloud storage is Aliyun OSS only. Local mode saves generated result artifacts under `.results/` and serves them from the local Flask console.
 - Only two Baidu document parsing models are wired in: `paddle_vl` and `unlimited_ocr`.
 - The corresponding Baidu OCR API access must be enabled in the user's Baidu Intelligent Cloud account, and the configured API Key / Secret Key must have permission to call the selected model.
 - The Aliyun AccessKey must have permission to upload input/result objects to the configured bucket. Local file uploads and public outputs require `public-read` ACL permission for the new object.

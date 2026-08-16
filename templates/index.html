@@ -134,7 +134,7 @@
       <div id="pane-file">
         <div class="drop" id="drop">
           <div class="big" id="drop-title">点击选择文件，或拖拽到这里</div>
-          <div class="hint">支持 PDF、图片(jpg/png/webp…)、Word、PPT、txt，最大 100 MB</div>
+          <div class="hint" id="file-size-hint">支持 PDF、图片(jpg/png/webp…)、Word、PPT、txt</div>
         </div>
         <input type="file" id="file-input" class="hidden"
                accept=".pdf,.ofd,.doc,.docx,.txt,.wps,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff">
@@ -236,6 +236,9 @@
       const output = document.getElementById("output-select");
       output.disabled = isLocal;
       output.title = isLocal ? "本地模式不使用云端链接" : "";
+      document.getElementById("file-size-hint").textContent = isLocal
+        ? "本地模式直传百度：图片最大 10 MB，其他文档最大 50 MB"
+        : "云端模式：支持 PDF、图片、Word、PPT、txt，最大 100 MB";
     }
 
     function switchMode(m) {

@@ -84,15 +84,18 @@ def _run_job(job_id: str, params: dict) -> None:
             _append_message(job_id, "提示：可视化查看器需要 public 模式，已自动切换为 public")
 
         merged = {}
+        file_url = None
         if params.get("local_path"):
             if storage_mode == "local":
-                _append_message(job_id, "本地结果模式：原始文件将临时上传到 OSS，供百度 OCR 读取")
-            _append_message(job_id, "正在上传本地文件到 OSS ...")
-            upload = upload_local_file_to_oss(config, params["local_path"], status_callback=status_callback)
-            merged.update(upload)
-            file_url = upload["source_url"]
-            file_name = upload["source_file_name"]
-            _append_message(job_id, f"上传完成：{file_name}")
+                file_name = Path(params["local_path"]).name
+                _append_message(job_id, "本地结果模式：正在将文件直接提交给百度 OCR")
+            else:
+                _append_message(job_id, "正在上传本地文件到 OSS ...")
+                upload = upload_local_file_to_oss(config, params["local_path"], status_callback=status_callback)
+                merged.update(upload)
+                file_url = upload["source_url"]
+                file_name = upload["source_file_name"]
+                _append_message(job_id, f"上传完成：{file_name}")
         else:
             file_url = params["file_url"]
             file_name = params.get("file_name") or None
@@ -108,6 +111,7 @@ def _run_job(job_id: str, params: dict) -> None:
             storage_mode=storage_mode,
             local_output_dir=str(RESULTS_DIR),
             local_url_prefix="/results",
+            local_file=params.get("local_path") if storage_mode == "local" else None,
         )
         merged.update(result)
         _finish_job(job_id, result=merged)
@@ -138,11 +142,12 @@ def local_result(result_path):
 def api_config():
     """返回非敏感的默认配置，用于预填界面（不含任何密钥）。"""
     config = load_config(str(CONFIG_PATH))
+    storage_mode = config_value(config, "storage_mode", default="cloud")
     return jsonify(
         {
-            "configured": bool(config.get("oss_bucket") and config.get("baidu_api_key")),
+            "configured": bool(config.get("baidu_api_key") and (storage_mode == "local" or config.get("oss_bucket"))),
             "model": config_value(config, "model", default="paddle_vl"),
-            "storage_mode": config_value(config, "storage_mode", default="cloud"),
+            "storage_mode": storage_mode,
             "output_url_mode": config_value(config, "output_url_mode", default="public"),
             "oss_bucket": config_value(config, "oss_bucket", default=""),
             "input_file_url": config_value(config, "input_file_url", default=""),

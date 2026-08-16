@@ -43,7 +43,7 @@ For this local machine, prefer `config/local.json`. Do not commit or share it.
 
 Command-line options override config values.
 
-`input_prefix` is used by `--local-file`. Each local source file is uploaded below this prefix with a unique key and object-level `public-read` ACL. Existing objects below the prefix are not modified. Keep confidential documents outside this prefix.
+`input_prefix` is used by `--local-file` in `cloud` mode. Each local source file is uploaded below this prefix with a unique key and object-level `public-read` ACL. Existing objects below the prefix are not modified. In `local` mode, `--local-file` uses Baidu's `file_data` parameter instead.
 
 ## Environment Variable Fallback
 
@@ -71,7 +71,9 @@ The OCR input file must be accessible by Baidu's servers:
 
 `cloud` is the default. Result Markdown, images, and viewer HTML are uploaded to OSS.
 
-`local` writes those result artifacts under `local_output_dir` (default `.results/`). When using the Flask console, they are available only from the same machine at `/results/...`. The Baidu OCR request itself remains cloud-based; local uploads still need a temporary URL that Baidu can access.
+`local` writes result Markdown, images, viewer HTML, and the original file under `local_output_dir` (default `.results/`). The selected local file is sent directly to Baidu as the `file_data` Base64 request parameter; no OSS input or output object is created. When using the Flask console, results are available only from the same machine at `/results/...`.
+
+For direct `file_data` upload, Baidu limits images to 10 MB and other supported documents to 50 MB. Larger documents require `cloud` mode with a `file_url`.
 
 ## Output URL Modes
 

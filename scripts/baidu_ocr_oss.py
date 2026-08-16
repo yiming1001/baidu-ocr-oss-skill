@@ -2,10 +2,12 @@
 """Shared Baidu OCR and Aliyun OSS workflow used by the CLI and local console."""
 
 import argparse
+import base64
 import json
 import mimetypes
 import os
 import re
+import shutil
 import sys
 import time
 import uuid
@@ -149,6 +151,31 @@ def build_task_output_prefix(output_prefix_base: str, model_id: str, task_id: st
     return f"{base_prefix}{model_segment}/{task_segment}/"
 
 
+def local_input_path(local_file: str) -> Path:
+    source_path = Path(local_file).expanduser().resolve()
+    if not source_path.is_file():
+        raise FileNotFoundError(f"Local input file not found: {source_path}")
+    suffix = source_path.suffix.lower()
+    if suffix not in LOCAL_INPUT_SUFFIXES:
+        raise ValueError(f"Unsupported local input type: {suffix or '(none)'}")
+    size_limit = 100 * 1024 * 1024 if suffix in IMAGE_SUFFIXES | {".pdf", ".ofd"} else 50 * 1024 * 1024
+    if source_path.stat().st_size > size_limit:
+        raise ValueError(f"Local input exceeds the {size_limit // 1024 // 1024} MB limit: {source_path.name}")
+    return source_path
+
+
+def encode_local_file_data(local_file: str) -> tuple[Path, str]:
+    """Encode a supported local document for Baidu's file_data request parameter."""
+    source_path = local_input_path(local_file)
+    direct_limit = 10 * 1024 * 1024 if source_path.suffix.lower() in IMAGE_SUFFIXES else 50 * 1024 * 1024
+    if source_path.stat().st_size > direct_limit:
+        raise ValueError(
+            f"Direct file_data upload exceeds the {direct_limit // 1024 // 1024} MB limit: {source_path.name}. "
+            "Use cloud mode with file_url for larger files."
+        )
+    return source_path, base64.b64encode(source_path.read_bytes()).decode("ascii")
+
+
 def normalize_storage_mode(value: str | None) -> str:
     mode = str(value or "cloud").strip().lower().replace("-", "_")
     if mode not in {"local", "cloud"}:
@@ -202,15 +229,7 @@ def upload_local_file_to_oss(
     status_callback: StatusCallback = None,
 ) -> dict[str, str]:
     """Upload one local source file with public-read ACL and return its permanent OSS URL."""
-    source_path = Path(local_file).expanduser().resolve()
-    if not source_path.is_file():
-        raise FileNotFoundError(f"Local input file not found: {source_path}")
-    suffix = source_path.suffix.lower()
-    if suffix not in LOCAL_INPUT_SUFFIXES:
-        raise ValueError(f"Unsupported local input type: {suffix or '(none)'}")
-    size_limit = 100 * 1024 * 1024 if suffix in IMAGE_SUFFIXES | {".pdf", ".ofd"} else 50 * 1024 * 1024
-    if source_path.stat().st_size > size_limit:
-        raise ValueError(f"Local input exceeds the {size_limit // 1024 // 1024} MB limit: {source_path.name}")
+    source_path = local_input_path(local_file)
 
     bucket, bucket_name, endpoint = create_bucket(config)
     prefix = normalize_prefix(str(input_prefix or config_value(config, "input_prefix", default="ocr-test/")))
@@ -353,12 +372,19 @@ def submit_parser_task(
     session: requests.Session,
     access_token: str,
     model: BaiduParserModel,
-    file_url: str,
     file_name: str,
     model_options: dict[str, str],
+    file_url: str | None = None,
+    file_data: str | None = None,
     status_callback: StatusCallback = None,
 ) -> str:
-    data = {"file_url": file_url, "file_name": file_name}
+    if bool(file_url) == bool(file_data):
+        raise ValueError("Pass exactly one of file_url or file_data to Baidu OCR.")
+    data = {"file_name": file_name}
+    if file_data:
+        data["file_data"] = file_data
+    else:
+        data["file_url"] = file_url
     data.update(model_options)
     response = post_with_retry(
         session,
@@ -592,7 +618,7 @@ def build_viewer_html(viewer_data: dict, source_pdf_url: str, markdown_content: 
 
 def run_document(
     config: dict,
-    file_url: str,
+    file_url: str | None = None,
     file_name: str | None = None,
     model_name: str | None = None,
     output_prefix_base: str | None = None,
@@ -606,6 +632,7 @@ def run_document(
     storage_mode: str | None = None,
     local_output_dir: str | None = None,
     local_url_prefix: str | None = None,
+    local_file: str | None = None,
 ) -> dict:
     api_key = required_config(config, "baidu_api_key", "BAIDU_API_KEY")
     secret_key = required_config(config, "baidu_secret_key", "BAIDU_SECRET_KEY")
@@ -619,7 +646,17 @@ def run_document(
     signed_url_expires = signed_url_expires or int(config_value(config, "signed_url_expires", default=604800))
     poll_interval = poll_interval or int(config_value(config, "poll_interval", default=5))
     max_wait = max_wait or int(config_value(config, "max_wait", default=1800))
-    file_name = str(file_name or unquote(Path(urlparse(file_url).path).name) or "input.pdf")
+    source_result_url = file_url
+    viewer_source_url = file_url
+    local_source_path = None
+    file_data = None
+    if local_file:
+        local_source_path, file_data = encode_local_file_data(local_file)
+        file_name = str(file_name or local_source_path.name)
+    elif file_url:
+        file_name = str(file_name or unquote(Path(urlparse(file_url).path).name) or "input.pdf")
+    else:
+        raise ValueError("Pass file_url or local_file to run_document.")
     model_options = dict(model_options or {})
     if generate_viewer:
         if model != PADDLE_VL_MODEL:
@@ -637,7 +674,14 @@ def run_document(
         access_token = get_baidu_access_token(session, api_key, secret_key, status_callback)
         update(f"Submitting {model.display_name} task")
         task_id = submit_parser_task(
-            session, access_token, model, file_url, file_name, model_options, status_callback
+            session,
+            access_token,
+            model,
+            file_name,
+            model_options,
+            file_url=file_url,
+            file_data=file_data,
+            status_callback=status_callback,
         )
         update(f"Task submitted: {task_id}")
         result = wait_for_parser_result(
@@ -659,6 +703,13 @@ def run_document(
             local_task_dir = local_root / model.id / task_segment
             local_task_dir.mkdir(parents=True, exist_ok=True)
             local_url_prefix = local_url_prefix or config_value(config, "local_url_prefix", default="/results")
+            if local_source_path:
+                source_relative = f"{model.id}/{task_segment}/source/{local_source_path.name}"
+                source_target = local_root / source_relative
+                source_target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(local_source_path, source_target)
+                viewer_source_url = build_local_result_url(str(local_url_prefix), source_relative)
+                source_result_url = viewer_source_url
             markdown_content, image_mapping = transfer_markdown_images_to_local(
                 session,
                 markdown_content,
@@ -705,7 +756,7 @@ def run_document(
                 raise RuntimeError("PaddleOCR-VL task succeeded but did not return parse_result_url.")
             update("Downloading PaddleOCR-VL coordinates")
             viewer_data = normalize_vl_parse_result(download_json(session, parse_result_url))
-            viewer_html = build_viewer_html(viewer_data, file_url, markdown_content)
+            viewer_html = build_viewer_html(viewer_data, viewer_source_url or file_url or "", markdown_content)
             if storage_mode == "local":
                 viewer_relative = f"{model.id}/{task_segment}/{Path(file_name).stem}_viewer.html"
                 viewer_key = viewer_relative
@@ -741,6 +792,7 @@ def run_document(
         "viewer_key": viewer_key,
         "viewer_url": viewer_url,
         "viewer_unavailable_reason": viewer_unavailable_reason,
+        "source_url": source_result_url,
     }
 
 
@@ -779,6 +831,25 @@ def run(args: argparse.Namespace) -> dict:
             and (args.output_url_mode or config_value(config, "output_url_mode", default="signed")) != "public"
         ):
             raise ValueError("Local PaddleOCR-VL processing requires output_url_mode=public for its public viewer.")
+        if storage_mode == "local":
+            source_path = local_input_path(args.local_file)
+            result = run_document(
+                config=config,
+                file_name=args.file_name or source_path.name,
+                model_name=model.id,
+                output_prefix_base=args.output_prefix,
+                output_url_mode=args.output_url_mode,
+                signed_url_expires=args.signed_url_expires,
+                poll_interval=args.poll_interval,
+                max_wait=args.max_wait,
+                model_options=parse_key_value_options(args.model_option),
+                generate_viewer=model == PADDLE_VL_MODEL,
+                storage_mode=storage_mode,
+                local_output_dir=args.local_output_dir,
+                local_url_prefix=args.local_url_prefix,
+                local_file=str(source_path),
+            )
+            return result
         upload = upload_local_file_to_oss(config, args.local_file)
         result = run_document(
             config=config,
